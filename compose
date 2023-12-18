@@ -1,0 +1,60 @@
+#!/usr/bin/bash
+
+DOCKER_COMPOSE_STACKS=/docker/stacks
+DOCKER_SCRIPTS=/docker/scripts
+DOCKER_COMPOSE_FILENAME=compose.yaml
+TEXT_EDITOR=nano
+  
+if [ $# -lt 2 ]; then
+  echo "usage: $0 <project> <compose command>"
+  exit 1
+fi
+
+if [ "${2}" == "edit" ]; then
+  if [ ${#} -eq 3 ]; then
+    echo "editing file: ${DOCKER_COMPOSE_STACKS}/${1}/${3}"
+    sleep 0.5
+    ${TEXT_EDITOR} "${DOCKER_COMPOSE_STACKS}/${1}/${3}"
+  elif [ ${#} -eq 2 ]; then
+    echo "editing file: ${DOCKER_COMPOSE_STACKS}/${1}/${DOCKER_COMPOSE_FILENAME}"
+    sleep 0.5
+    ${TEXT_EDITOR} "${DOCKER_COMPOSE_STACKS}/${1}/${DOCKER_COMPOSE_FILENAME}"
+  else
+    echo "expected 0 or 1 args for edit got $((${#}-3))"
+    exit 1
+  fi
+elif [ "${2}" == "scripts" ]; then
+
+  if [ "${3}" == "list" ] || [ "${3}" == "ls" ] ; then
+    find "${DOCKER_SCRIPTS}/${1}" -type f
+
+  elif [ "${3}" == "run" ]; then
+    if [ ${#} -lt 4 ]; then
+       echo "expected exactly 1 arg of <filename> for run got $((${#}-3))"
+       exit 1
+    fi
+    echo "Executing script: ${DOCKER_SCRIPTS}/${1}/${4} ${@:5}"
+    sleep 0.5
+    ${DOCKER_SCRIPTS}/"${1}"/"${4}" ${@:5}
+
+  elif [ "${3}" == "edit" ]; then
+    if [ ${#} -ne 4 ]; then
+       echo "expected exactly 1 arg of <filename> for run got $((${#}-3))"
+       exit 1
+    fi
+    echo "editing file: ${DOCKER_SCRIPTS}/${1}/${4}"
+    sleep 0.5
+    ${TEXT_EDITOR} "${DOCKER_SCRIPTS}/${1}/${4}"
+  else
+    echo "Unknown command: ${3}. Expected either ls,run,edit"
+    exit 1
+  fi
+else
+    if [ "${1}" == "all" ]; then
+        for _dir in "${DOCKER_COMPOSE_STACKS}"/* ; do
+          cd "${_dir}" && docker compose "${@:2}"
+        done
+    else
+      cd ${DOCKER_COMPOSE_STACKS}/"${1}" && docker compose "${@:2}"
+    fi
+fi
