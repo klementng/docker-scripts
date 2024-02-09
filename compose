@@ -1,60 +1,80 @@
 #!/usr/bin/bash
 
-DOCKER_COMPOSE_STACKS=/docker/stacks
+DOCKER_STACKS_PATH=/docker/stacks
 DOCKER_SCRIPTS=/docker/scripts
-DOCKER_COMPOSE_FILENAME=compose.yaml
 TEXT_EDITOR=nano
-  
+
 if [ $# -lt 2 ]; then
-  echo "usage: $0 <project> <compose command>"
-  exit 1
+	echo "usage: $0 <project> <compose command>"
+	exit 1
 fi
 
 if [ "${2}" == "edit" ]; then
-  if [ ${#} -eq 3 ]; then
-    echo "editing file: ${DOCKER_COMPOSE_STACKS}/${1}/${3}"
-    sleep 0.5
-    ${TEXT_EDITOR} "${DOCKER_COMPOSE_STACKS}/${1}/${3}"
-  elif [ ${#} -eq 2 ]; then
-    echo "editing file: ${DOCKER_COMPOSE_STACKS}/${1}/${DOCKER_COMPOSE_FILENAME}"
-    sleep 0.5
-    ${TEXT_EDITOR} "${DOCKER_COMPOSE_STACKS}/${1}/${DOCKER_COMPOSE_FILENAME}"
-  else
-    echo "expected 0 or 1 args for edit got $((${#}-3))"
-    exit 1
-  fi
+	_dir="$(find ${DOCKER_STACKS_PATH}/$(echo ${1} | cut -d'/' -f1) -maxdepth 1 -type d -name *$(echo ${1} | cut -d'/' -f2)*)"
+	_path="$(find ${_dir} -maxdepth 1 -type f -regextype posix-extended -regex '.*\/(docker-)?compose\.(yaml|yml)')"
+
+	if [ -f "${_path}" ]; then
+		echo "Editing '${_path}'"
+		$TEXT_EDITOR "${_path}"
+	else
+		echo "${_path} does not exist."
+		exit 1
+	fi
+
 elif [ "${2}" == "scripts" ]; then
 
-  if [ "${3}" == "list" ] || [ "${3}" == "ls" ] ; then
-    find "${DOCKER_SCRIPTS}/${1}" -type f
+	if [ "${3}" == "list" ] || [ "${3}" == "ls" ]; then
+		find "${DOCKER_SCRIPTS}/${1}" -type f -exec echo "{}" \;
+		exit $?
+	else
+		if [ ${#} -lt 4 ]; then
+			echo "expected exactly 1 arg of <filename> for run got $((${#} - 3))"
+			exit 1
+		fi
 
-  elif [ "${3}" == "run" ]; then
-    if [ ${#} -lt 4 ]; then
-       echo "expected exactly 1 arg of <filename> for run got $((${#}-3))"
-       exit 1
-    fi
-    echo "Executing script: ${DOCKER_SCRIPTS}/${1}/${4} ${@:5}"
-    sleep 0.5
-    ${DOCKER_SCRIPTS}/"${1}"/"${4}" ${@:5}
+		if [ -f "${DOCKER_SCRIPTS}/${1}/${4}" ]; then
+			_file="${DOCKER_SCRIPTS}/${1}/${4}"
+		else
+			_file="$(find ${DOCKER_SCRIPTS}/${1} -maxdepth 1 -type f -name *${4}*)" # -print -quit
 
-  elif [ "${3}" == "edit" ]; then
-    if [ ${#} -ne 4 ]; then
-       echo "expected exactly 1 arg of <filename> for run got $((${#}-3))"
-       exit 1
-    fi
-    echo "editing file: ${DOCKER_SCRIPTS}/${1}/${4}"
-    sleep 0.5
-    ${TEXT_EDITOR} "${DOCKER_SCRIPTS}/${1}/${4}"
-  else
-    echo "Unknown command: ${3}. Expected either ls,run,edit"
-    exit 1
-  fi
+			if ! [ -f "${_file}" ] && [ "${3}" != "add" ]; then
+				echo "find: multiple files found / no files found. The file '${_file}' is not valid"
+				exit 1
+			fi
+		fi
+
+		if [ "${3}" == "add" ]; then
+			mkdir -p "${DOCKER_SCRIPTS}/${1}"
+			echo "Adding/editing ${DOCKER_SCRIPTS}/${1}/${4}'"
+			$TEXT_EDITOR "${DOCKER_SCRIPTS}/${1}/${4}"
+
+		elif [ "${3}" == "run" ]; then
+			echo "Running '/usr/bin/bash ${_file}' ${@:5}"
+			/usr/bin/bash "${_file}" ${@:5}
+			echo "-- Process ended --"
+
+		elif [ "${3}" == "edit" ]; then
+			echo "Editing ${_file}'"
+			$TEXT_EDITOR "${_file}"
+
+		elif [ "${3}" == "delete" ] || [ "${3}" == "del" ]; then
+			echo "Removing ${_file}'"
+			read -p "Continue? (Y/N): " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
+			rm "${_file}"
+
+		else
+			echo "Unknown command '${3}'. Expected either ls, run, edit, add"
+			exit 1
+		fi
+	fi
+
 else
-    if [ "${1}" == "all" ]; then
-        for _dir in "${DOCKER_COMPOSE_STACKS}"/* ; do
-          cd "${_dir}" && docker compose "${@:2}"
-        done
-    else
-      cd ${DOCKER_COMPOSE_STACKS}/"${1}" && docker compose "${@:2}"
-    fi
+	if [ "${1}" == "all" ]; then
+		for _dir in "${DOCKER_STACKS_PATH}"/*; do
+			cd "${_dir}" && docker compose "${@:2}"
+		done
+		wait $!
+	else
+		cd $(find ${DOCKER_STACKS_PATH} -maxdepth 1 -type d -name "*${1}*") && docker compose ${@:2}
+	fi
 fi
